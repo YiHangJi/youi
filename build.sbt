@@ -3,7 +3,7 @@ import sbtcrossproject.CrossPlugin.autoImport.crossProject
 
 name := "youi"
 organization in ThisBuild := "io.youi"
-version in ThisBuild := "0.11.19-SNAPSHOT"
+version in ThisBuild := "0.11.20-SNAPSHOT"
 scalaVersion in ThisBuild := "2.13.0"
 crossScalaVersions in ThisBuild := List("2.13.0", "2.12.8", "2.11.12")
 resolvers in ThisBuild ++= Seq(
@@ -44,7 +44,7 @@ val scalaJSDOM = "0.9.7"
 val okHttpVersion = "4.0.0"
 val circeVersion = "0.12.0-M3"
 val uaDetectorVersion = "2014.10"
-val undertowVersion = "2.0.22.Final"
+val undertowVersion = "2.0.23.Final"
 val closureCompilerVersion = "v20190618"
 val jSoupVersion = "1.12.1"
 val scalaXMLVersion = "1.2.0"
@@ -55,7 +55,7 @@ val scalaCheckVersion = "1.14.0"
 lazy val root = project.in(file("."))
   .aggregate(
     macrosJS, macrosJVM, coreJS, coreJVM, spatialJS, spatialJVM, stream, dom, clientJS, clientJVM, server,
-    serverUndertow, uiJS, uiJVM, optimizer, appJS, appJVM, exampleJS, exampleJVM
+    serverUndertow, uiJS, uiJVM, gui, optimizer, appJS, appJVM, exampleJS, exampleJVM
   )
   .settings(
     resolvers += "Artima Maven Repository" at "http://repo.artima.com/releases",
@@ -204,6 +204,14 @@ lazy val ui = crossProject(JSPlatform, JVMPlatform).in(file("ui"))
 
 lazy val uiJS = ui.js.dependsOn(dom)
 lazy val uiJVM = ui.jvm
+
+lazy val gui = project.in(file("gui"))
+  .enablePlugins(ScalaJSPlugin)
+  .settings(
+    name := "youi-gui",
+    jsEnv := new org.scalajs.jsenv.jsdomnodejs.JSDOMNodeJSEnv
+  )
+  .dependsOn(dom)
 
 lazy val optimizer = project.in(file("optimizer"))
   .settings(
