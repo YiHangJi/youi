@@ -1,18 +1,19 @@
 import org.scalajs.jsenv.jsdomnodejs.JSDOMNodeJSEnv
 import sbtcrossproject.CrossPlugin.autoImport.crossProject
+import sbtcrossproject.CrossType
 
 name := "youi"
 organization in ThisBuild := "io.youi"
-version in ThisBuild := "0.11.22"
+version in ThisBuild := "0.12.14-SNAPSHOT"
 scalaVersion in ThisBuild := "2.13.1"
-crossScalaVersions in ThisBuild := List("2.13.1", "2.12.8", "2.11.12")
+crossScalaVersions in ThisBuild := List("2.13.1", "2.12.10")
 resolvers in ThisBuild ++= Seq(
   Resolver.sonatypeRepo("releases"),
   Resolver.sonatypeRepo("snapshots")
 )
 scalacOptions in ThisBuild ++= Seq("-unchecked", "-deprecation", "-feature")
 
-publishTo in ThisBuild := sonatypePublishTo.value
+publishTo in ThisBuild := sonatypePublishToBundle.value
 sonatypeProfileName in ThisBuild := "io.youi"
 publishMavenStyle in ThisBuild := true
 licenses in ThisBuild := Seq("MIT" -> url("https://github.com/outr/youi/blob/master/LICENSE"))
@@ -28,37 +29,33 @@ developers in ThisBuild := List(
   Developer(id="darkfrog", name="Matt Hicks", email="matt@matthicks.com", url=url("http://matthicks.com"))
 )
 
-val profigVersion = "2.3.6"
-val scribeVersion = "2.7.8"
-val reactifyVersion = "3.0.4"
+val profigVersion = "2.3.7"
+val scribeVersion = "2.7.10"
+val reactifyVersion = "3.0.5"
 val hasherVersion = "1.2.2"
-val hookupVersion = "2.0.3"
 
 val canvgVersion = "1.4.0_2"
 val openTypeVersion = "0.7.3_1"
 val picaVersion = "3.0.5_1"
 val webFontLoaderVersion = "1.6.28_1"
 
-val akkaVersion = "2.5.23"
-val scalaJSDOM = "0.9.7"
-val okHttpVersion = "4.0.0"
-val circeVersion = "0.12.0-M3"
+val scalaJSDOM = "0.9.8"
+val okHttpVersion = "4.3.1"
 val uaDetectorVersion = "2014.10"
-val undertowVersion = "2.0.23.Final"
-val closureCompilerVersion = "v20190618"
+val undertowVersion = "2.0.29.Final"
+val closureCompilerVersion = "v20200112"
 val jSoupVersion = "1.12.1"
 val scalaXMLVersion = "1.2.0"
-val collectionCompat = "2.1.1"
+val collectionCompat = "2.1.3"
 val scalaTestVersion = "3.1.0-SNAP13"
 val scalaCheckVersion = "1.14.0"
 
 lazy val root = project.in(file("."))
   .aggregate(
-    macrosJS, macrosJVM, coreJS, coreJVM, spatialJS, spatialJVM, stream, dom, clientJS, clientJVM, server,
-    serverUndertow, uiJS, uiJVM, gui, optimizer, appJS, appJVM, exampleJS, exampleJVM
+    macrosJS, macrosJVM, coreJS, coreJVM, spatialJS, spatialJVM, stream, dom, clientJS, clientJVM, communicationJS,
+    communicationJVM, server, serverUndertow, uiJS, uiJVM, gui, optimizer, appJS, appJVM, exampleJS, exampleJVM
   )
   .settings(
-    resolvers += "Artima Maven Repository" at "http://repo.artima.com/releases",
     publish := {},
     publishLocal := {}
   )
@@ -74,7 +71,8 @@ lazy val macros = crossProject(JSPlatform, JVMPlatform).in(file("macros"))
     )
   )
   .jsSettings(
-    jsEnv := new org.scalajs.jsenv.jsdomnodejs.JSDOMNodeJSEnv
+    jsEnv := new org.scalajs.jsenv.jsdomnodejs.JSDOMNodeJSEnv,
+    scalacOptions += "-P:scalajs:sjsDefinedByDefault"
   )
 
 lazy val macrosJS = macros.js
@@ -84,30 +82,19 @@ lazy val core = crossProject(JSPlatform, JVMPlatform).in(file("core"))
   .settings(
     name := "youi-core",
     description := "Core functionality leveraged and shared by most other sub-projects of YouI.",
-    resolvers += "Artima Maven Repository" at "http://repo.artima.com/releases",
     libraryDependencies ++= Seq(
       "org.scala-lang" % "scala-reflect" % scalaVersion.value,
       "com.outr" %%% "profig" % profigVersion,
       "com.outr" %%% "scribe" % scribeVersion,
       "com.outr" %%% "reactify" % reactifyVersion,
-      "com.outr" %%% "hookup" % hookupVersion,
       "org.scalatest" %%% "scalatest" % scalaTestVersion % "test"
-    ),
-    libraryDependencies ++= Seq(
-      "io.circe" %%% "circe-core",
-      "io.circe" %%% "circe-generic",
-      "io.circe" %%% "circe-parser"
-    ).map(_ % circeVersion)
-  )
-  .jvmSettings(
-    libraryDependencies ++= Seq(
-      "com.typesafe.akka" %% "akka-actor" % akkaVersion
     )
   )
   .jsSettings(
     libraryDependencies ++= Seq(
       "org.scala-js" %%% "scalajs-dom" % scalaJSDOM
-    )
+    ),
+    scalacOptions += "-P:scalajs:sjsDefinedByDefault"
   )
   .dependsOn(macros)
 
@@ -120,6 +107,9 @@ lazy val client = crossProject(JSPlatform, JVMPlatform).in(file("client"))
     libraryDependencies ++= Seq(
       "org.scalatest" %%% "scalatest" % scalaTestVersion % "test"
     )
+  )
+  .jsSettings(
+    scalacOptions += "-P:scalajs:sjsDefinedByDefault"
   )
   .jvmSettings(
     libraryDependencies ++= Seq(
@@ -140,7 +130,8 @@ lazy val spatial = crossProject(JSPlatform, JVMPlatform).in(file("spatial"))
     )
   )
   .jsSettings(
-    jsEnv := new JSDOMNodeJSEnv
+    jsEnv := new JSDOMNodeJSEnv,
+    scalacOptions += "-P:scalajs:sjsDefinedByDefault"
   )
   .dependsOn(core)
 
@@ -149,7 +140,11 @@ lazy val spatialJVM = spatial.jvm
 
 lazy val stream = project.in(file("stream"))
   .settings(
-    name := "youi-stream"
+    name := "youi-stream",
+    libraryDependencies ++= Seq(
+      "org.scalatest" %%% "scalatest" % scalaTestVersion % "test",
+      "org.scalacheck" %%% "scalacheck" % scalaCheckVersion % "test"
+    )
   )
   .dependsOn(coreJVM)
 
@@ -161,10 +156,30 @@ lazy val dom = project.in(file("dom"))
       "com.outr" %% "profig" % profigVersion,
       "org.scalatest" %%% "scalatest" % scalaTestVersion % "test"
     ),
-    jsEnv := new org.scalajs.jsenv.jsdomnodejs.JSDOMNodeJSEnv
+    jsEnv := new org.scalajs.jsenv.jsdomnodejs.JSDOMNodeJSEnv,
+    scalacOptions += "-P:scalajs:sjsDefinedByDefault"
   )
   .dependsOn(coreJS)
   .dependsOn(stream % "compile")
+
+lazy val communication = crossProject(JSPlatform, JVMPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("communication"))
+  .settings(
+    name := "youi-communication",
+    libraryDependencies ++= Seq(
+      "org.scala-lang" % "scala-reflect" % scalaVersion.value,
+      "org.scalatest" %%% "scalatest" % scalaTestVersion % "test"
+    )
+  )
+  .jsSettings(
+    test := {},
+    scalacOptions += "-P:scalajs:sjsDefinedByDefault"
+  )
+  .dependsOn(core)
+
+lazy val communicationJS = communication.js
+lazy val communicationJVM = communication.jvm
 
 lazy val server = project.in(file("server"))
   .settings(
@@ -174,7 +189,7 @@ lazy val server = project.in(file("server"))
       "org.scalatest" %% "scalatest" % scalaTestVersion % "test"
     )
   )
-  .dependsOn(coreJVM, stream)
+  .dependsOn(communicationJVM, stream)
 
 lazy val serverUndertow = project.in(file("serverUndertow"))
   .settings(
@@ -198,7 +213,8 @@ lazy val ui = crossProject(JSPlatform, JVMPlatform).in(file("ui"))
       "com.outr" %%% "opentype-scala-js" % openTypeVersion,
       "com.outr" %%% "pica-scala-js" % picaVersion
     ),
-    jsEnv := new org.scalajs.jsenv.jsdomnodejs.JSDOMNodeJSEnv
+    jsEnv := new org.scalajs.jsenv.jsdomnodejs.JSDOMNodeJSEnv,
+    scalacOptions += "-P:scalajs:sjsDefinedByDefault"
   )
   .dependsOn(spatial)
 
@@ -234,9 +250,10 @@ lazy val app = crossProject(JSPlatform, JVMPlatform).in(file("app"))
     )
   )
   .jsSettings(
-    jsEnv := new org.scalajs.jsenv.jsdomnodejs.JSDOMNodeJSEnv
+    jsEnv := new org.scalajs.jsenv.jsdomnodejs.JSDOMNodeJSEnv,
+    scalacOptions += "-P:scalajs:sjsDefinedByDefault"
   )
-  .dependsOn(core, ui)
+  .dependsOn(core, communication, ui)
 
 lazy val appJS = app.js
 lazy val appJVM = app.jvm.dependsOn(server)
@@ -247,7 +264,8 @@ lazy val example = crossApplication.in(file("example"))
     youiVersion := version.value
   )
   .jsSettings(
-    jsEnv := new org.scalajs.jsenv.jsdomnodejs.JSDOMNodeJSEnv
+    jsEnv := new org.scalajs.jsenv.jsdomnodejs.JSDOMNodeJSEnv,
+    scalacOptions += "-P:scalajs:sjsDefinedByDefault"
   )
   .jvmSettings(
     scalaJSUseMainModuleInitializer := true,
@@ -268,4 +286,3 @@ lazy val utilities = project.in(file("utilities"))
       "org.jsoup" % "jsoup" % jSoupVersion
     )
   )
-  .dependsOn(coreJVM)

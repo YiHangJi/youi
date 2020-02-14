@@ -9,7 +9,7 @@ import scala.concurrent.Future
 trait Screen {
   private var registration = Map.empty[Var[_], ScreenRegistration[_]]
 
-  def title: String = getClass.getSimpleName
+  def title: String = getClass.getSimpleName.replaceAllLiterally("$", "")
 
   private[screen] val currentState = Var[ScreenState](ScreenState.New)
 
@@ -22,7 +22,7 @@ trait Screen {
   protected def load(): Future[Unit] = Future.successful(())
 
   protected def activate(): Future[Unit] = {
-    ui.title := title
+    ui.title @= title
     registration.values.foreach(_.activate())
     Future.successful(())
   }

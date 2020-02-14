@@ -2,11 +2,12 @@ package io.youi.app
 
 import io.youi.ajax.AjaxRequest
 import io.youi.app.screen.ScreenManager
-import io.youi.{History, JavaScriptError, JavaScriptLog, LocalStorage}
+import io.youi.{History, JavaScriptError, JavaScriptLog}
 import io.youi.app.sourceMap.ErrorTrace
-import org.scalajs.dom._
+import org.scalajs.dom.{ErrorEvent, FormData, XMLHttpRequest, window}
 import io.youi.dom._
-import io.youi.net.URL
+import io.youi.net._
+import io.youi.storage.LocalStorage
 import profig.JsonUtil
 import scribe.{Level, LogRecord}
 import scribe.output.LogOutput
@@ -20,16 +21,13 @@ import scala.scalajs.js.|
 trait ClientApplication extends YouIApplication with ScreenManager {
   ClientApplication.instance = this
 
-  addScript("/source-map.min.js")
+  def baseURL: URL = URL(window.location.href).withPath(path"/").clearParams().withoutFragment()
+
+  addScript(baseURL.withPath(path"/source-map.min.js").toString)
 
   override def isClient: Boolean = true
 
   override def isServer: Boolean = false
-
-  // Configure communication end-points
-  private var configuredConnectivity: Map[ApplicationConnectivity, ClientConnectivity] = Map.empty
-
-  def clientConnectivity(connectivity: ApplicationConnectivity): ClientConnectivity = configuredConnectivity(connectivity)
 
   private val errorFunction: js.Function5[String, String, Int, Int, Throwable | js.Error, Unit] = (message: String, source: String, line: Int, column: Int, err: Throwable | js.Error) => {
     err match {
@@ -43,14 +41,6 @@ trait ClientApplication extends YouIApplication with ScreenManager {
   if (logJavaScriptErrors) {
     js.Dynamic.global.window.onerror = errorFunction
     scribe.Logger.root.withHandler(writer = ErrorTrace).replace()
-  }
-
-  connectivityEntries.attachAndFire { entries =>
-    entries.foreach { connectivity =>
-      if (!configuredConnectivity.contains(connectivity)) {
-        configuredConnectivity += connectivity -> new ClientConnectivity(connectivity, this)
-      }
-    }
   }
 
   // Client-side management and caching of URL-based session id
@@ -68,13 +58,12 @@ trait ClientApplication extends YouIApplication with ScreenManager {
     }
   }
 
-  def autoReload: Boolean = true
-
   override def cached(url: URL): String = url.asPath()
 }
 
 object ClientApplication {
-  def logWriter(maximumBytes: Long = -1L,
+  def logWriter(baseURL: => URL = History.url(),
+                maximumBytes: Long = -1L,
                 maximumRecords: Int = -1,
                 maximumErrors: Int = -1): Writer = new Writer {
     private var bytesWritten = 0L
@@ -87,7 +76,7 @@ object ClientApplication {
       bytesWritten += text.length
       recordsWritten += 1
       if (record.level >= Level.Error) errorsWritten += 1
-      sendLog(JavaScriptLog(text))
+      sendLog(baseURL, JavaScriptLog(text))
       if (maximumBytes != -1L && bytesWritten >= maximumBytes) {
         enabled = false
       } else if (maximumRecords != -1 && recordsWritten >= maximumRecords) {
@@ -116,11 +105,15 @@ object ClientApplication {
     ErrorTrace.toError(event).flatMap(sendError)
   }
 
-  def sendLog(log: JavaScriptLog): Future[XMLHttpRequest] = {
+  def sendLog(baseURL: URL, log: JavaScriptLog): Future[XMLHttpRequest] = {
     val formData = new FormData
     val jsonString = JsonUtil.toJsonString(log)
     formData.append("message", jsonString)
-    val request = new AjaxRequest(History.url().replacePathAndParams(instance.logPath), data = Some(formData))
+    val request = new AjaxRequest(
+      url = baseURL.replacePathAndParams(instance.logPath),
+      data = Some(formData),
+      withCredentials = false
+    )
     request.send()
   }
 }

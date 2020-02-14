@@ -1,5 +1,6 @@
 package io.youi.ajax
 
+import io.youi.http.HttpMethod
 import io.youi.net.URL
 import org.scalajs.dom
 import org.scalajs.dom._
@@ -11,6 +12,7 @@ import scala.scalajs.js
 import scala.scalajs.js.|
 
 class AjaxRequest(url: URL,
+                  method: HttpMethod = HttpMethod.Post,
                   data: Option[FormData | String] = None,
                   timeout: Int = 0,
                   headers: Map[String, String] = Map.empty,
@@ -33,12 +35,12 @@ class AjaxRequest(url: URL,
     }
   }
   req.upload.addEventListener("progress", (evt: ProgressEvent) => {
-    total.asInstanceOf[Var[Double]] := evt.total
-    loaded.asInstanceOf[Var[Double]] := evt.loaded
+    total.asInstanceOf[Var[Double]] @= evt.total
+    loaded.asInstanceOf[Var[Double]] @= evt.loaded
     val p = math.round(math.floor((evt.loaded / evt.total) * 100)).toInt
-    percentage.asInstanceOf[Var[Int]] := p
+    percentage.asInstanceOf[Var[Int]] @= p
   })
-  req.open("POST", url.toString)
+  req.open(method.value, url.toString)
   req.responseType = responseType
   req.timeout = timeout
   req.withCredentials = withCredentials
@@ -54,6 +56,6 @@ class AjaxRequest(url: URL,
 
   def cancel(): Unit = if (percentage.get != 100) {
     req.abort()
-    cancelled.asInstanceOf[Var[Boolean]] := true
+    cancelled.asInstanceOf[Var[Boolean]] @= true
   }
 }

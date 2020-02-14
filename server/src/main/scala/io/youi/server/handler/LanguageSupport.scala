@@ -8,10 +8,11 @@ import io.youi.Priority
 import io.youi.http.content.Content
 import io.youi.http.cookie.ResponseCookie
 import io.youi.http.{Headers, HttpConnection}
-import io.youi.net.ContentType
+import io.youi.net._
 import profig.{Profig, ProfigLookupPath}
 
 import scala.concurrent.Future
+import scribe.Execution.global
 
 /**
   * LanguageSupport adds simple multi-lingual support to HTML files
@@ -25,12 +26,20 @@ import scala.concurrent.Future
   *
   * @param default the default locale to fall-back on
   */
-class LanguageSupport(val default: Locale = Locale.ENGLISH) extends HttpHandler {
+class LanguageSupport(val default: Locale = Locale.ENGLISH, languagePath: Path = path"/language.json") extends HttpHandler {
   private lazy val emptyConfig = new Profig(None)
   private val languageConfig = new ConcurrentHashMap[String, Profig]
   private val cookieName = "lang"
 
-  override def handle(connection: HttpConnection): Future[HttpConnection] = {
+  override def handle(connection: HttpConnection): Future[HttpConnection] = if (connection.request.url.path == languagePath) {
+    Future {
+      val (c, l) = locales(connection)
+      val config = firstConfig(l)
+      c.modify { response =>
+        response.withContent(Content.string(config.json.spaces2, ContentType.`application/json`))
+      }
+    }
+  } else {
     val updated = connection
       .response
       .content
@@ -79,14 +88,7 @@ class LanguageSupport(val default: Locale = Locale.ENGLISH) extends HttpHandler 
   }
 
   def translate(locales: List[String], html: String): String = {
-    val existingConfig = locales.flatMap { locale =>
-      Option(languageConfig.get(locale))
-    }.headOption
-
-    val config = existingConfig match {
-      case Some(cfg) => cfg
-      case None => firstConfig(locales)
-    }
+    val config = firstConfig(locales)
 
     val matcher = """[{]([a-zA-Z0-9._-]+?)[}]""".r
     matcher.replaceAllIn(html, m => {
@@ -104,18 +106,23 @@ class LanguageSupport(val default: Locale = Locale.ENGLISH) extends HttpHandler 
 
   override def priority: Priority = Priority.Fallback
 
-  private def firstConfig(localeStrings: List[String]): Profig = if (localeStrings.isEmpty) {
+  def firstConfig(localeStrings: List[String]): Profig = if (localeStrings.isEmpty) {
     emptyConfig
   } else {
     val locale = localeStrings.head
-    val lookupPaths = ProfigLookupPath.paths(mergePaths = Nil, defaultPaths = List(s"language-$locale"))
-    val config = new Profig(None)
-    config.load(lookupPaths: _*)
-    if (config.json.asObject.get.nonEmpty) {
-      languageConfig.put(locale, config)
-      config
-    } else {
-      firstConfig(localeStrings.tail)
+    Option(languageConfig.get(locale)) match {
+      case Some(config) => config
+      case None => {
+        val lookupPaths = ProfigLookupPath.paths(mergePaths = Nil, defaultPaths = List(s"language-$locale"))
+        val config = new Profig(None)
+        config.load(lookupPaths: _*)
+        if (config.json.asObject.get.nonEmpty) {
+          languageConfig.put(locale, config)
+          config
+        } else {
+          firstConfig(localeStrings.tail)
+        }
+      }
     }
   }
 

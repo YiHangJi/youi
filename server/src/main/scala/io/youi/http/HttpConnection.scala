@@ -1,7 +1,7 @@
 package io.youi.http
 
-import io.youi.server.Server
-import io.youi.stream.Delta
+import io.youi.server.{Server, WebSocketListener}
+import io.youi.stream.delta.Delta
 import io.youi.{MapStore, Store}
 
 case class HttpConnection(server: Server,
@@ -14,13 +14,14 @@ case class HttpConnection(server: Server,
   }
 
   def isWebSocketUpgradeRequest: Boolean = Headers.`Connection`.all(request.headers).contains("Upgrade")
-  def webSocketSupport: Option[Connection] = store.get[Connection](Connection.key)
-  def withWebSocket(listener: Connection): HttpConnection = {
+  def webSocketListener: Option[WebSocketListener] = store.get[WebSocketListener](WebSocketListener.key)
+  def withWebSocketListener(): (HttpConnection, WebSocketListener) = {
     if (isWebSocketUpgradeRequest) {
-      store.update(Connection.key, listener)
+      val listener = new WebSocketListener(this)
+      store.update(WebSocketListener.key, listener)
       modify { response =>
         response.copy(status = HttpStatus.SwitchingProtocols)
-      }
+      } -> listener
     } else {
       throw new RuntimeException(s"Not a WebSocket upgrade request! Expected 'Connection' set to 'Upgrade'. Headers: ${request.headers}")
     }

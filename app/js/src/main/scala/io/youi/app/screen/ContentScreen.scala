@@ -3,6 +3,7 @@ package io.youi.app.screen
 import reactify.{Val, Var}
 import io.youi.{History, dom}
 import io.youi.dom._
+import io.youi.http.HttpMethod
 import io.youi.net.Parameters
 import io.youi.stream.StreamURL
 import org.scalajs.dom.html
@@ -24,17 +25,7 @@ trait ContentScreen extends Screen with PathActivation {
     }
 
     if (contentOption.isEmpty) {      // Content hasn't been loaded yet
-      val url = History
-        .url()
-        .copy(path = path, parameters = Parameters.empty)
-        .withParam("part", "true")
-        .withParam("selector", "screen")
-      scribe.debug(s"Loading content $url...")
-      StreamURL.stream(url).map { htmlString =>
-        scribe.debug(s"Content loaded successfully (${htmlString.length} characters)")
-        val screen = dom.fromString[html.Element](htmlString).headOption.getOrElse(throw new RuntimeException(s"No content found in: [$htmlString] for URL: $url"))
-        loadScreen(screen)
-      }
+      generateScreen().map(loadScreen)
     } else {                          // Content has already been loaded either by page load or by previous load
       Future.successful(())
     }
@@ -45,6 +36,29 @@ trait ContentScreen extends Screen with PathActivation {
   }
 
   def preload(): Future[Unit] = preloaded
+
+  protected def generateScreen(): Future[html.Element] = {
+    val url = History
+      .url()
+      .copy(path = path, parameters = Parameters.empty)
+      .withParam("part", "true")
+      .withParam("selector", "screen")
+    scribe.debug(s"Loading content $url...")
+    StreamURL
+      .stream(url, method = HttpMethod.Get)
+      .map { html =>              // Fix for non-youi-server
+        val start = html.indexOf("<screen>")
+        val end = html.indexOf("</screen>")
+        html.substring(start, end + 9)
+      }
+      .map { htmlString =>
+        scribe.debug(s"Content loaded successfully (${htmlString.length} characters)")
+        dom
+          .fromString[html.Element](htmlString)
+          .headOption
+          .getOrElse(throw new RuntimeException(s"No content found in: [$htmlString] for URL: $url"))
+      }
+  }
 
   private def loadScreen(screen: html.Element): Unit = {
     val span = dom.create[html.Span]("span")
@@ -57,23 +71,25 @@ trait ContentScreen extends Screen with PathActivation {
       }
       span.appendChild(child)
     }
-    span.classList.add("d-none")
+
+    hideContent(span)
     pageTag.appendChild(span)
-    contentOptionVar := Some(span)
+    contentOptionVar @= Some(span)
   }
 
-  protected def showContent(): Unit = contentOption.foreach { _ =>
-    content.classList.remove("d-none")
+  protected def showContent(content: html.Element): Unit = {
+    content.style.removeProperty("display")
   }
-  protected def hideContent(): Unit = contentOption.foreach { _ =>
-    content.classList.add("d-none")
+
+  protected def hideContent(content: html.Element): Unit = {
+    content.style.display = "none"
   }
 
   override protected def activate(): Future[Unit] = super.activate().map { _ =>
-    showContent()
+    contentOption.foreach(showContent)
   }
 
   override protected def deactivate(): Future[Unit] = super.deactivate().map { _ =>
-    hideContent()
+    contentOption.foreach(hideContent)
   }
 }

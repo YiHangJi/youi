@@ -21,7 +21,7 @@ case class ContentType(`type`: String,
     }
     b.toString()
   }
-  lazy val extension: Option[String] = ContentType.mimeType2Extensions.getOrElse(`type`, Nil).headOption
+  lazy val extension: Option[String] = ContentType.mimeType2Extensions.getOrElse(mimeType, Nil).headOption
 
   def withExtra(key: String, value: String): ContentType = copy(extras = extras + (key -> value))
   def withCharSet(charSet: String): ContentType = withExtra("charset", charSet)
@@ -1810,13 +1810,15 @@ object ContentType {
     var contentType = ContentType(`type`, subType)
     parts.tail.foreach { s =>
       val block = s.trim
-      val divider = block.indexOf('=')
-      if (divider == -1) {
-        throw new RuntimeException(s"Unable to parse content type: [$contentTypeString]")
+      if (block.nonEmpty) {
+        val divider = block.indexOf('=')
+        if (divider == -1) {
+          throw new RuntimeException(s"Unable to parse content type: [$contentTypeString], block: [$block]")
+        }
+        val name = block.substring(0, divider)
+        val value = block.substring(divider + 1)
+        contentType = contentType.withExtra(name, value)
       }
-      val name = block.substring(0, divider)
-      val value = block.substring(divider + 1)
-      contentType = contentType.withExtra(name, value)
     }
     contentType
   }

@@ -5,7 +5,6 @@ import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
 
 import io.youi.http.content._
-import io.youi.stream._
 
 import scala.annotation.tailrec
 import scala.jdk.CollectionConverters._
@@ -24,9 +23,9 @@ object HTMLParser {
   /**
     * The set of attributes to limit to if filterAttributes is set to true.
     *
-    * Defaults to "id" and "class".
+    * Defaults to "id", "class", and "data-youi".
     */
-  var validAttributes: Set[String] = Set("id", "class")
+  var validAttributes: Set[String] = Set("id", "class", "data-youi", "data-youi-class")
 
   private val parsers = new ConcurrentHashMap[File, StreamableHTML]().asScala
 
@@ -53,7 +52,7 @@ object HTMLParser {
   }
 
   def apply(file: File): StreamableHTML = {
-    val cacheBuilder = new CacheBuilder {
+    val cacheBuilder: CacheBuilder = new CacheBuilder {
       private var lastModified: Long = 0L
 
       override def isStale: Boolean = lastModified != file.lastModified()
@@ -63,9 +62,10 @@ object HTMLParser {
         try {
           val parser = new HTMLParser(input)
           val tags = parser.parse()
-          var byId = Map.empty[String, OpenTag]
-          var byClass = Map.empty[String, Set[OpenTag]]
-          var byTag = Map.empty[String, Set[OpenTag]]
+          var byId = Map.empty[String, Tag.Open]
+          var byClass = Map.empty[String, Set[Tag.Open]]
+          var byTag = Map.empty[String, Set[Tag.Open]]
+          var byAttribute = Map.empty[String, Set[Tag.Open]]
           tags.foreach { tag =>
             if (tag.attributes.contains("id")) {
               byId += tag.attributes("id") -> tag
@@ -73,17 +73,22 @@ object HTMLParser {
             tag.attributes.getOrElse("class", "").split(" ").foreach { className =>
               val cn = className.trim
               if (cn.nonEmpty) {
-                var classTags = byClass.getOrElse(cn, Set.empty[OpenTag])
+                var classTags = byClass.getOrElse(cn, Set.empty[Tag.Open])
                 classTags += tag
                 byClass += cn -> classTags
               }
             }
-            var tagsByName = byTag.getOrElse(tag.tagName, Set.empty[OpenTag])
+            tag.attributes.keys.foreach { attributeName =>
+              var attributeNameTags = byAttribute.getOrElse(attributeName, Set.empty[Tag.Open])
+              attributeNameTags += tag
+              byAttribute += attributeName -> attributeNameTags
+            }
+            var tagsByName = byTag.getOrElse(tag.tagName, Set.empty[Tag.Open])
             tagsByName += tag
             byTag += tag.tagName -> tagsByName
           }
           lastModified = file.lastModified()
-          CachedInformation(byId, byClass, byTag)
+          CachedInformation(byId, byClass, byTag, byAttribute)
         } catch {
           case throwable: Throwable => throw new RuntimeException(s"Error parsing ${file.getAbsolutePath}", throwable)
         } finally {
@@ -104,11 +109,11 @@ class HTMLParser(input: InputStream) {
   private var tagStart = -1
   private var tagEnd = -1
 
-  private var open = List.empty[OpenTag]
-  private var tags = Set.empty[OpenTag]
+  private var open = List.empty[Tag.Open]
+  private var tags = Set.empty[Tag.Open]
 
   @tailrec
-  final def parse(): Set[OpenTag] = input.read() match {
+  final def parse(): Set[Tag.Open] = input.read() match {
     case -1 => tags   // Finished
     case i => {
       val c = i.toChar
@@ -144,18 +149,18 @@ class HTMLParser(input: InputStream) {
   private def parseTag(): Unit = b.toString() match {
     case s if s.startsWith("<!--") || s.endsWith("-->") => // Ignore
     case CloseTagRegex(tagName) => {
-      val closeTag = CloseTag(tagName, tagStart, tagEnd)
+      val closeTag = Tag.Close(tagName, tagStart, tagEnd)
       val openTag = closeUntil(tagName).copy(close = Some(closeTag))
       tags += openTag
     }
     case SelfClosingTagRegex(tagName, attributes) => {
       val a = parseAttributes(attributes)
-      val tag = OpenTag(tagName, a, tagStart, tagEnd, close = None)
+      val tag = Tag.Open(tagName, a, tagStart, tagEnd, close = None)
       tags += tag
     }
     case OpenTagRegex(tagName, attributes) => {
       val a = parseAttributes(attributes)
-      val tag = OpenTag(tagName, a, tagStart, tagEnd, close = None)
+      val tag = Tag.Open(tagName, a, tagStart, tagEnd, close = None)
       open = tag :: open
     }
   }
@@ -193,7 +198,7 @@ class HTMLParser(input: InputStream) {
   }
 
   @tailrec
-  private def closeUntil(tagName: String): OpenTag = {
+  private def closeUntil(tagName: String): Tag.Open = {
     if (open.isEmpty) {
       throw new RuntimeException(s"Missing close tag for $tagName!")
     }
